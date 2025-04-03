@@ -1,1 +1,14 @@
+# 例: ルートディレクトリにある requirements.txt
+fastapi
+uvicorn
+httpx
+nltk
+spacy
+pysbd
+torch
 transformers
+sentence-transformers
+faiss-cpu
+pydantic
+pydantic-settings
+pytest
