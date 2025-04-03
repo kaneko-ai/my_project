@@ -1,15 +1,9 @@
-name: CI - Run Tests
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
 jobs:
   test:
     runs-on: windows-latest
-
+    defaults:
+      run:
+        working-directory: .  # ルートディレクトリが対象
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
@@ -26,5 +20,4 @@ jobs:
         pip install pytest
 
     - name: Run tests with pytest
-      run: |
-        python -m pytest
+      run: python -m pytest
