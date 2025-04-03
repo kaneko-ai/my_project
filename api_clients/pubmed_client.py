@@ -1,7 +1,6 @@
 # api_clients/pubmed_client.py
-import os, json
-from typing import List, Tuple
 import httpx
+from typing import List, Tuple
 
 class PubMedClient:
     BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
@@ -26,5 +25,3 @@ class PubMedClient:
         count = int(result.get("count", 0))
         id_list = result.get("idlist", [])
         return id_list, count
-
-    # 詳細取得関数は省略（必要に応じて追加）
