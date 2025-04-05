@@ -1,40 +1,38 @@
 name: Run App Process
 
-# トリガーの設定
 on:
   schedule:
-    - cron: '0 * * * *'      # 毎時0分に実行（UTC時間、必要に応じて時刻を調整）
-  workflow_dispatch:         # GitHub上で手動実行できるようにする
+    - cron: '0 * * * *'    # 毎時0分に自動実行（UTC時間なので、時差がある場合は調整）
+  workflow_dispatch:       # GitHubの画面から手動で実行できるようにする
 
 jobs:
   run_app:
-    runs-on: ubuntu-latest   # Linux環境での実行（無料枠が無制限に近い）
+    runs-on: ubuntu-latest  # Linuxの軽い環境で実行する
     steps:
-      # ① リポジトリの最新コードをチェックアウト
+      # 1. 最新のコードを取り出す
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # ② Python のセットアップ
+      # 2. Pythonをセットアップする（ここではバージョン3.11）
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
 
-      # ③ 依存パッケージのインストール
+      # 3. 依存するライブラリ（必要な部品）をインストールする
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # ④ アプリケーション（本番モード）の実行
+      # 4. プログラムを本番用に実行する（ここで論文データを取得して、outputフォルダにファイルを作る）
       - name: Run application in production mode
-        run: |
-          python app.py --mode production
+        run: python app.py --mode production
 
-      # ⑤ 成果物のアップロード（任意）
+      # 5. 成果物として output フォルダにあるファイルをアップロードする
       - name: Upload processed data artifact
         if: success()
         uses: actions/upload-artifact@v3
         with:
-          name: processed-data
-          path: output/  # app.py で保存された成果物のディレクトリ
+          name: processed-data    # 保存される成果物の名前
+          path: output/           # プログラムが作った「output」フォルダ全体
