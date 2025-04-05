@@ -1,38 +1,34 @@
-name: Run App Process
+name: CI - Run Tests
 
+# ここが最上部のトリガー設定
 on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
   schedule:
-    - cron: '0 * * * *'    # 毎時0分に自動実行（UTC時間なので、時差がある場合は調整）
-  workflow_dispatch:       # GitHubの画面から手動で実行できるようにする
+    - cron: '0 * * * *'   # 毎時0分に実行（UTC）。必要に応じて時刻を調整してください。
 
 jobs:
-  run_app:
-    runs-on: ubuntu-latest  # Linuxの軽い環境で実行する
+  test:
+    runs-on: windows-latest  # Windows環境でテストを実行（必要に応じて ubuntu-latest などに変更も可能）
+    defaults:
+      run:
+        working-directory: .
     steps:
-      # 1. 最新のコードを取り出す
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # 2. Pythonをセットアップする（ここではバージョン3.11）
       - name: Set up Python 3.11
         uses: actions/setup-python@v4
         with:
           python-version: 3.11
 
-      # 3. 依存するライブラリ（必要な部品）をインストールする
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install pytest
 
-      # 4. プログラムを本番用に実行する（ここで論文データを取得して、outputフォルダにファイルを作る）
-      - name: Run application in production mode
-        run: python app.py --mode production
-
-      # 5. 成果物として output フォルダにあるファイルをアップロードする
-      - name: Upload processed data artifact
-        if: success()
-        uses: actions/upload-artifact@v3
-        with:
-          name: processed-data    # 保存される成果物の名前
-          path: output/           # プログラムが作った「output」フォルダ全体
+      - name: Run tests with pytest
+        run: python -m pytest
