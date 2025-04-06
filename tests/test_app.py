@@ -1,24 +1,24 @@
-# tests/test_app.py
-
 import os
 import sys
 
-# ★重要★
-# 現在、このテストファイルは tests フォルダにあります。
-# そのため、リポジトリのルート（ultimate_mygpt.py がある場所）を Python のモジュール検索パスに追加します。
+# 1. リポジトリのルート（tests の親ディレクトリ）を Python のモジュール検索パスに追加する
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# リポジトリのルートにある ultimate_mygpt.py から FastAPI のインスタンス app をインポート
+# 2. リポジトリのルートにある ultimate_mygpt.py から FastAPI の app をインポート
 from ultimate_mygpt import app
 
+# 3. fastapi.testclient を使ってテストクライアントを作成
 from fastapi.testclient import TestClient
 client = TestClient(app)
 
 def test_health():
-    # /health エンドポイントに GET リクエストを送信して、正しいレスポンスが返るか確認するテストです。
+    """
+    /health エンドポイントにアクセスして、ステータスコード200が返るかどうかを確認するテスト。
+    """
     response = client.get("/health")
-    # HTTPステータスコードが200（成功）であることを確認
-    assert response.status_code == 200, "Expected status code 200"
+    # ステータスコードが200であることを確認
+    assert response.status_code == 200, "Expected status code 200, but got {}".format(response.status_code)
+    # レスポンスのJSONを確認
     data = response.json()
-    # レスポンスのJSONに "status" キーが含まれていることを確認
-    assert "status" in data, "Response JSON should contain 'status'"
+    # "status" キーが含まれていることを確認
+    assert "status" in data, "'status' key should be in the response JSON"
