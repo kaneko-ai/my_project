@@ -1,7 +1,8 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException, BackgroundTasks
 import argparse
 import os
 import datetime
+import platform
 
 # FastAPI のインスタンスを作成し、「app」という名前で公開します。
 app = FastAPI()
@@ -11,14 +12,32 @@ app = FastAPI()
 def read_root():
     return {"message": "Hello, World!"}
 
-# ★追加★: /health エンドポイントを定義
-# このエンドポイントは、システムの動作確認用で、"ok" と現在の日時を返します。
+# /health エンドポイント（システムの動作確認用）
 @app.get("/health")
 def health_check():
     return {"status": "ok", "timestamp": datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}
 
-# /ner エンドポイントの定義
-# 解析対象のテキストを受け取り、もし "Apple" が含まれていればダミーの固有表現結果を返します。
+# ★新規追加★: /version エンドポイント
+# アプリケーションのバージョン情報、ビルド（起動）時刻、OSの情報などを返します。
+@app.get("/version")
+def version_info():
+    version = "2.0.0"  # 固定のバージョン番号（必要に応じて変更）
+    build_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    os_info = platform.platform()
+    return {"version": version, "build_time": build_time, "platform": os_info}
+
+# ★新規追加★: /status エンドポイント
+# シンプルなシステム状態情報を返すエンドポイントです。
+@app.get("/status")
+def status_info():
+    # ここでは現在の稼働状態（動いているか）、現在の作業ディレクトリなどを返しています。
+    return {
+        "status": "running",
+        "uptime": datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
+        "base_dir": os.getcwd()
+    }
+
+# /ner エンドポイント：解析対象のテキスト内に "Apple" があればダミーの固有表現結果を返します。
 @app.get("/ner")
 def ner_endpoint(text: str = Query(..., description="解析対象のテキスト")):
     entities = []
@@ -26,8 +45,7 @@ def ner_endpoint(text: str = Query(..., description="解析対象のテキスト
         entities.append(("Apple", "ORG"))
     return {"entities": entities}
 
-# /summary エンドポイントの定義
-# 要約対象のテキストの先頭50文字を抜粋して返します。
+# /summary エンドポイント：要約対象のテキストの先頭50文字を抜粋して返します。
 @app.get("/summary")
 def summary_endpoint(text: str = Query(..., description="要約対象のテキスト")):
     summary = text[:50] + "..." if len(text) > 50 else text
