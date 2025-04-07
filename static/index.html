@@ -58,10 +58,24 @@
           document.getElementById("result").innerText = "テキストを入力してください。";
           return;
         }
-        // クエリパラメータにテキストを付加してGETリクエストを送る
+        // 要約取得のリクエスト
         const response = await fetch("/summary?text=" + encodeURIComponent(text));
         const data = await response.json();
         document.getElementById("result").innerText = JSON.stringify(data, null, 2);
+        
+        // ここでログ送信用の処理を追加（サンプル例）
+        await fetch("/log", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            action: "summary",
+            input: text,
+            output: data,
+            timestamp: new Date().toISOString()
+          })
+        });
       } catch (err) {
         document.getElementById("result").innerText = "Error: " + err;
       }
