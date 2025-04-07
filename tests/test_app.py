@@ -1,24 +1,35 @@
-import os
-import sys
-
-# 1. リポジトリのルート（tests の親ディレクトリ）を Python のモジュール検索パスに追加する
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-# 2. リポジトリのルートにある ultimate_mygpt.py から FastAPI の app をインポート
-from ultimate_mygpt import app
-
-# 3. fastapi.testclient を使ってテストクライアントを作成
+import pytest
 from fastapi.testclient import TestClient
+from ultimate_mygpt import app
+import datetime
+
 client = TestClient(app)
 
-def test_health():
-    """
-    /health エンドポイントにアクセスして、ステータスコード200が返るかどうかを確認するテスト。
-    """
-    response = client.get("/health")
-    # ステータスコードが200であることを確認
-    assert response.status_code == 200, "Expected status code 200, but got {}".format(response.status_code)
-    # レスポンスのJSONを確認
+def test_read_root():
+    response = client.get("/")
+    assert response.status_code == 200
     data = response.json()
-    # "status" キーが含まれていることを確認
-    assert "status" in data, "'status' key should be in the response JSON"
+    assert "Hello, World!" in data.get("message", "")
+
+def test_health():
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("status") == "ok"
+    # タイムスタンプが正しいフォーマットか簡易チェック
+    datetime.datetime.strptime(data.get("timestamp"), "%Y-%m-%d_%H-%M-%S")
+
+def test_version():
+    response = client.get("/version")
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("version") == "2.0.0"
+    assert "build_time" in data
+    assert "platform" in data
+
+def test_status():
+    response = client.get("/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("status") == "running"
+    assert "base_dir" in data
