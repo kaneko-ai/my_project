@@ -413,6 +413,6 @@ async def update_database(background_tasks: BackgroundTasks):
     background_tasks.add_task(update_task)
     return {"message": "Update task scheduled."}
 
-# --- アプリ起動 ---
+# --- アプリ起動 ----
 if __name__ == "__main__":
     uvicorn.run("ultimate_mygpt:app", host="0.0.0.0", port=8000, reload=True)
