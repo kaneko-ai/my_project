@@ -1,21 +1,21 @@
-# Python 3.11の軽量イメージをベースにする
+# Dockerfile
 FROM python:3.11-slim
 
-# 作業ディレクトリを/appに設定
+# 作業ディレクトリを設定
 WORKDIR /app
 
-# 依存ファイルを先にコピー（requirements.txtなど）
+# 依存ファイルをコピーし、ライブラリをインストール
 COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 依存ライブラリをインストール
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# ソースコード全体をコピー
+# アプリのコード全体をコピー
 COPY . .
 
-# APIサーバーのポート（例: 8000）を公開
-EXPOSE 8000
+# Render 環境では $PORT 環境変数が自動設定されます
+ENV PORT=8000
 
-# FastAPIサーバーを起動（ここではuvicornを使用）
-CMD ["uvicorn", "ultimate_mygpt:app", "--host", "0.0.0.0", "--port", "8000"]
+# ポート番号を公開（Render では必須ではありませんが推奨）
+EXPOSE $PORT
+
+# コンテナ起動時のコマンド
+CMD ["uvicorn", "ultimate_mygpt:app", "--host=0.0.0.0", "--port", "$PORT"]
