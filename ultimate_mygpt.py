@@ -12,7 +12,9 @@ Ultimate MyGPT-Paper Analyzer - Ultimate Version (2.0)
 ・GitHub管理、無料ホスティング＋CI/CD自動更新、MyGPTアクション連携を前提
 """
 
+# 基本モジュールのインポート
 import os, re, json, time, math, uuid, base64, logging, asyncio, datetime, platform
+import numpy as np  # ← ここで NumPy を np としてインポート（追加箇所）
 from typing import List, Dict, Any, Optional
 
 import httpx
@@ -288,61 +290,17 @@ class PubMedClient:
             ))
         return articles
 
-# --- 高度な要約処理 ---
-def generate_summary(text: str, max_length: int) -> str:
-    try:
-        summary = model_loader.summarizer(text, max_length=max_length, min_length=30, do_sample=False)[0]['summary_text']
-        return summary
-    except Exception as e:
-        logger.error(f"Summarization error: {e}")
-        return truncate_text(text, max_length)
-
-# --- 論文データの統合処理 ---
-def process_paper(article: ArticleSummary) -> PaperData:
-    full_text = article.abstract or ""
-    full_text = truncate_text(full_text, settings.MAX_CHUNK_SIZE * 10)
-    processed_summary = generate_summary(full_text, max_length=150)
-    chunker = SmartChunker()
-    chunks_text = chunker.chunk_text(full_text)
-    chunk_objs = []
-    for idx, ch_text in enumerate(chunks_text, start=1):
-        vec = model_loader.semantic_model.encode(ch_text)
-        chunk_objs.append(Chunk(id=idx, text=ch_text, embedding=vec.tolist()))
-    words = [w.lower().strip(".,") for w in processed_summary.split() if len(w) > 4]
-    tags = list(dict.fromkeys(words))[:5]
-    return PaperData(
-        summary=article,
-        full_text=full_text,
-        processed_summary=processed_summary,
-        tags=tags,
-        chunks=chunk_objs
-    )
-
-# --- MyGPT連携のためのエクスポート機能 ---
-async def export_articles(query: str, retmax: int = 10) -> List[PaperData]:
-    pubmed = PubMedClient(api_key=settings.NCBI_API_KEY)
-    ids, total = await pubmed.search(query, retmax=retmax)
-    if not ids:
-        return []
-    articles = await pubmed.fetch_details(ids)
-    processed_articles = [process_paper(art) for art in articles]
-    return processed_articles
-
-# --- 新規追加：ユーザーのログを受け付けるエンドポイント ---
 @app.post("/log", tags=["Logging"])
 async def log_interaction(request: Request):
     data = await request.json()
-    # ログファイルを保存するディレクトリを作成（なければ）
     log_dir = os.path.join(settings.LOG_DIR, "user_interactions")
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, "interactions.log")
-    # 受け取ったデータを JSON 形式で追記保存
     with open(log_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(data, ensure_ascii=False) + "\n")
     logger.info("User interaction logged.")
     return {"message": "Log received"}
 
-# --- 新規追加：/version エンドポイント ---
 @app.get("/version", tags=["Info"])
 def version_info():
     version = "2.0.0"
@@ -350,7 +308,6 @@ def version_info():
     os_info = platform.platform()
     return {"version": version, "build_time": build_time, "platform": os_info}
 
-# --- 新規追加：/status エンドポイント ---
 @app.get("/status", tags=["Info"])
 def status_info():
     return {
@@ -359,13 +316,13 @@ def status_info():
         "base_dir": os.getcwd()
     }
 
-# --- FastAPIエンドポイント ---
 app = FastAPI(
     title="Ultimate MyGPT-Paper Analyzer API",
     description="PubMed/PMC, arXiv, bioRxiv 論文の検索、解析、要約、チャンク化、埋め込み生成を提供するAPI。MyGPTのRAG連携用学習データとして利用可能。",
     version="2.0.0"
 )
 
+from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -374,7 +331,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 静的ファイルの提供設定
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.on_event("startup")
@@ -387,7 +343,6 @@ async def startup_event():
 def health_check():
     return {"status": "ok", "timestamp": datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}
 
-# ここで使われる SearchResponse を定義（簡易な例）
 class SearchResponse(BaseModel):
     query: str
     count: int
