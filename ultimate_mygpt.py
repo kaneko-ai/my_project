@@ -290,7 +290,7 @@ class PubMedClient:
             ))
         return articles
 
-# 注意: process_paper や export_articles などの補助関数は実装されている前提です。
+# 注意: process_paper や export_articles の具体的実装は、現行システム内で定義済みと仮定します。
 
 # --- FastAPI インスタンスの定義 ---
 app = FastAPI(
@@ -368,7 +368,7 @@ async def get_paper(pmid: str):
     articles = await pubmed.fetch_details([pmid])
     if not articles:
         raise HTTPException(status_code=404, detail=f"No article found for PMID {pmid}")
-    # process_paper 関数は要約生成、チャンク化などを実施する補助関数です（実装済みの前提）
+    # process_paper 関数は要約生成、チャンク化などを実施する補助関数です（定義済みの前提）
     paper = process_paper(articles[0])
     return paper
 
