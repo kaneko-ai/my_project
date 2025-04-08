@@ -6,7 +6,7 @@ Ultimate MyGPT-Paper Analyzer - Ultimate Version (2.0)
 ・高度なテキストチャンク化、重複オーバーラップ処理
 ・Transformerによる要約生成（多段階要約対応）
 ・埋め込み生成（SciBERT/SPECTER/All-MiniLM選択可能）でFAISS検索連携（拡張可能）
-・FastAPIによるREST API提供 (/search, /paper/{id}, /export, /embed, /health, /version, /status, /log, /search_arxiv)
+・FastAPIによるREST API提供 (/search, /paper/{id}, /export, /embed, /health, /version, /status, /log, /search_arxiv, /search_biorxiv)
 ・非同期処理、バッチ処理、キャッシュ、リトライ戦略を実装
 ・pydanticによる厳格なスキーマ管理、ドキュメント自動生成
 ・GitHub管理、無料ホスティング＋CI/CD自動更新、MyGPTアクション連携を前提
@@ -290,36 +290,36 @@ class PubMedClient:
             ))
         return articles
 
-# --- 新規: ArxivClient の定義 ---
-import xml.etree.ElementTree as ET  # 既にインポートされていなければ追加
-class ArxivClient:
-    BASE_URL = "http://export.arxiv.org/api/query"
-    
+# --- 新規: BioRxivClient の定義 ---
+class BioRxivClient:
+    # 例として、bioRxiv API の URL を利用（実際の仕様に合わせて調整してください）
+    BASE_URL = "https://api.biorxiv.org/details/biorxiv/2020-01-01/2023-12-31"
+
     async def search(self, query: str, max_results: int = 10) -> List[ArticleSummary]:
-        # URL例: http://export.arxiv.org/api/query?search_query=all:がん&max_results=10
-        url = f"{self.BASE_URL}?search_query=all:{query}&max_results={max_results}"
+        # URL例: https://api.biorxiv.org/details/biorxiv/2020-01-01/2023-12-31/<query>/<max_results>
+        url = f"{self.BASE_URL}/{query}/{max_results}"
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, timeout=settings.TIMEOUT)
             resp.raise_for_status()
-            xml_content = resp.text
-        # XML をパース
-        ns = {'atom': 'http://www.w3.org/2005/Atom'}
-        root = ET.fromstring(xml_content)
+            data = resp.json()
         articles = []
-        for entry in root.findall('atom:entry', ns):
-            title = entry.find('atom:title', ns).text.strip() if entry.find('atom:title', ns) is not None else "No title"
-            summary_text = entry.find('atom:summary', ns).text.strip() if entry.find('atom:summary', ns) is not None else ""
-            authors = [author.find('atom:name', ns).text.strip() for author in entry.findall('atom:author', ns)]
-            journal = "arXiv"
-            published = entry.find('atom:published', ns).text.strip() if entry.find('atom:published', ns) is not None else ""
-            year = int(published[:4]) if published and published[:4].isdigit() else None
+        # bioRxiv API のレスポンス形式に応じて、collection キーの情報を抽出
+        for item in data.get("collection", []):
+            title = item.get("title", "No title")
+            # 複数著者がセミコロン区切りで文字列として返ることがあるため分割
+            authors_str = item.get("authors", "")
+            authors = [a.strip() for a in authors_str.split(";")] if authors_str else []
+            journal = "bioRxiv"
+            pub_date = item.get("date", "")
+            year = int(pub_date[:4]) if pub_date and pub_date[:4].isdigit() else None
+            abstract = item.get("abstract", "")
             articles.append(ArticleSummary(
-                pmid="",
+                pmid=item.get("doi", ""),
                 title=title,
                 authors=authors,
                 journal=journal,
                 year=year,
-                abstract=summary_text,
+                abstract=abstract,
                 citation=f"{authors[0] if authors else 'Unknown'} et al. ({year}). {title}. {journal}."
             ))
         return articles
@@ -394,13 +394,23 @@ async def search_articles(query: str, max_results: int = 10):
     results = [{"pmid": art.pmid, "title": art.title, "journal": art.journal, "year": art.year} for art in articles]
     return SearchResponse(query=query, count=count, results=results)
 
-# 新規エンドポイント: arXiv の検索
+# 新規: arXiv の検索エンドポイント
 @app.get("/search_arxiv", tags=["Search"])
 async def search_arxiv(query: str, max_results: int = 10):
     if not query or query.strip() == "":
         raise HTTPException(status_code=400, detail="Query cannot be empty")
     arxiv_client = ArxivClient()
     articles = await arxiv_client.search(query, max_results)
+    results = [{"title": art.title, "authors": art.authors, "year": art.year, "abstract": art.abstract} for art in articles]
+    return {"query": query, "count": len(results), "results": results}
+
+# 新規: bioRxiv の検索エンドポイント
+@app.get("/search_biorxiv", tags=["Search"])
+async def search_biorxiv(query: str, max_results: int = 10):
+    if not query or query.strip() == "":
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    biorxiv_client = BioRxivClient()
+    articles = await biorxiv_client.search(query, max_results)
     results = [{"title": art.title, "authors": art.authors, "year": art.year, "abstract": art.abstract} for art in articles]
     return {"query": query, "count": len(results), "results": results}
 
