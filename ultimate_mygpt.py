@@ -313,7 +313,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # --- ルートエンドポイントの定義 ---
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to Ultimate MyGPT-Paper Analyzer API"}
+    return {"message": "Hello, World!"}
 
 # --- その他のエンドポイントの定義 ---
 @app.post("/log", tags=["Logging"])
