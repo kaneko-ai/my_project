@@ -29,7 +29,7 @@ from pydantic_settings import BaseSettings
 # --- セキュリティ関連 ---
 import jwt
 
-# --- キャッシュ用ライブラリ ---
+# --- キャッシュ用ライブラリ (redis.asyncio) ---
 import redis.asyncio as redis
 
 # --- NLP / MLライブラリ ---
@@ -65,9 +65,9 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "default"
     NCBI_API_KEY: Optional[str] = None
     # セキュリティ用設定
-    JWT_SECRET_KEY: str = "your_jwt_secret_key"  # 本番では安全なキーに置き換え
+    JWT_SECRET_KEY: str = "your_jwt_secret_key"  # 本番では安全なキーを設定
     JWT_ALGORITHM: str = "HS256"
-    # Redis の接続設定（キャッシュ用）
+    # Redis の接続設定
     REDIS_URL: str = "redis://localhost:6379/0"
 
     class Config:
@@ -87,7 +87,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- Redis クライアント (グローバルに定義) ---
+# --- Redis クライアント (グローバル) ---
 redis_client = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
 
 # --- NLTK 初期化 ---
@@ -236,7 +236,7 @@ class SmartChunker:
                 final_chunks.append(chunk)
         return final_chunks
 
-# --- 外部 API 連携: PubMed ---
+# --- 外部API連携: PubMed ---
 class PubMedClient:
     BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
     def __init__(self, api_key: Optional[str] = settings.NCBI_API_KEY):
@@ -541,7 +541,7 @@ async def search_all(query: str, max_results: int = 10):
     
     return {"query": query, "count": len(results), "results": results}
 
-# --- 既存: API ドキュメント、ルート (/)
+# --- 既存: API ドキュメント、ルート (/) とヘルスチェック ---
 @app.get("/")
 def read_root():
     return {"message": "Hello, World!"}
