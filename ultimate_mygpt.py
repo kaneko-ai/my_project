@@ -14,7 +14,7 @@ Ultimate MyGPT-Paper Analyzer - Ultimate Version (2.0)
 
 # 基本モジュールのインポート
 import os, re, json, time, math, uuid, base64, logging, asyncio, datetime, platform
-import numpy as np  # ← ここで NumPy を np としてインポート（追加箇所）
+import numpy as np  # NumPy を np として利用するためのインポート
 from typing import List, Dict, Any, Optional
 
 import httpx
@@ -208,7 +208,7 @@ class SmartChunker:
                 final_chunks.append(chunk)
         return final_chunks
 
-# --- 外部API連携: PubMed, arXiv等 ---
+# --- 外部API連携: PubMed, arXiv, bioRxiv など ---
 class PubMedClient:
     BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
     def __init__(self, api_key: Optional[str] = settings.NCBI_API_KEY):
@@ -290,6 +290,29 @@ class PubMedClient:
             ))
         return articles
 
+# （注：export_articles、process_paper 等の補助関数は省略されている場合がありますが、
+#  必要に応じて追加してください。）
+
+# --- FastAPI インスタンスの定義 ---
+app = FastAPI(
+    title="Ultimate MyGPT-Paper Analyzer API",
+    description="PubMed/PMC, arXiv, bioRxiv 論文の検索、解析、要約、チャンク化、埋め込み生成を提供するAPI。MyGPTのRAG連携用学習データとして利用可能。",
+    version="2.0.0"
+)
+
+# --- CORS ミドルウェアと静的ファイルの設定 ---
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# --- エンドポイントの定義 ---
+
 @app.post("/log", tags=["Logging"])
 async def log_interaction(request: Request):
     data = await request.json()
@@ -315,29 +338,6 @@ def status_info():
         "uptime": datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
         "base_dir": os.getcwd()
     }
-
-app = FastAPI(
-    title="Ultimate MyGPT-Paper Analyzer API",
-    description="PubMed/PMC, arXiv, bioRxiv 論文の検索、解析、要約、チャンク化、埋め込み生成を提供するAPI。MyGPTのRAG連携用学習データとして利用可能。",
-    version="2.0.0"
-)
-
-from fastapi.middleware.cors import CORSMiddleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-@app.on_event("startup")
-async def startup_event():
-    for directory in [settings.OUTPUT_DIR, settings.CACHE_DIR, settings.LOG_DIR, settings.MODEL_DIR, settings.TEMP_DIR, settings.META_DIR]:
-        os.makedirs(directory, exist_ok=True)
-    logger.info("Startup complete.")
 
 @app.get("/health", tags=["Health"])
 def health_check():
@@ -365,6 +365,7 @@ async def get_paper(pmid: str):
     articles = await pubmed.fetch_details([pmid])
     if not articles:
         raise HTTPException(status_code=404, detail=f"No article found for PMID {pmid}")
+    # process_paper 関数は要約生成、チャンク化などを実施する補助関数です（定義は省略）
     paper = process_paper(articles[0])
     return paper
 
@@ -409,5 +410,6 @@ async def update_database(background_tasks: BackgroundTasks):
     background_tasks.add_task(update_task)
     return {"message": "Update task scheduled."}
 
+# --- アプリ起動 ---
 if __name__ == "__main__":
     uvicorn.run("ultimate_mygpt:app", host="0.0.0.0", port=8000, reload=True)
