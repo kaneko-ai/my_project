@@ -6,7 +6,7 @@ Ultimate MyGPT-Paper Analyzer - Ultimate Version (2.0)
 ・高度なテキストチャンク化、重複オーバーラップ処理
 ・Transformerによる要約生成（多段階要約対応）
 ・埋め込み生成（SciBERT/SPECTER/All-MiniLM選択可能）でFAISS検索連携（拡張可能）
-・FastAPIによるREST API提供 (/search, /paper/{id}, /export, /embed, /health, /version, /status, /log, /search_arxiv, /search_biorxiv)
+・FastAPIによるREST API提供 (/search, /paper/{id}, /export, /embed, /health, /version, /status, /log, /search_arxiv, /search_biorxiv, /metrics, /recent_logs)
 ・非同期処理、バッチ処理、キャッシュ、リトライ戦略を実装
 ・pydanticによる厳格なスキーマ管理、ドキュメント自動生成
 ・GitHub管理、無料ホスティング＋CI/CD自動更新、MyGPTアクション連携を前提
@@ -67,7 +67,8 @@ os.makedirs(settings.LOG_DIR, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler(), logging.FileHandler(os.path.join(settings.LOG_DIR, "pubmed_rag.log"), mode="a")]
+    handlers=[logging.StreamHandler(), 
+              logging.FileHandler(os.path.join(settings.LOG_DIR, "pubmed_rag.log"), mode="a")]
 )
 logger = logging.getLogger(__name__)
 
@@ -290,23 +291,51 @@ class PubMedClient:
             ))
         return articles
 
+# --- 新規: ArxivClient の定義 ---
+import xml.etree.ElementTree as ET  # 必要に応じて
+class ArxivClient:
+    BASE_URL = "http://export.arxiv.org/api/query"
+    
+    async def search(self, query: str, max_results: int = 10) -> List[ArticleSummary]:
+        url = f"{self.BASE_URL}?search_query=all:{query}&max_results={max_results}"
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, timeout=settings.TIMEOUT)
+            resp.raise_for_status()
+            xml_content = resp.text
+        ns = {'atom': 'http://www.w3.org/2005/Atom'}
+        root = ET.fromstring(xml_content)
+        articles = []
+        for entry in root.findall('atom:entry', ns):
+            title = entry.find('atom:title', ns).text.strip() if entry.find('atom:title', ns) is not None else "No title"
+            summary_text = entry.find('atom:summary', ns).text.strip() if entry.find('atom:summary', ns) is not None else ""
+            authors = [author.find('atom:name', ns).text.strip() for author in entry.findall('atom:author', ns)]
+            journal = "arXiv"
+            published = entry.find('atom:published', ns).text.strip() if entry.find('atom:published', ns) is not None else ""
+            year = int(published[:4]) if published and published[:4].isdigit() else None
+            articles.append(ArticleSummary(
+                pmid="",
+                title=title,
+                authors=authors,
+                journal=journal,
+                year=year,
+                abstract=summary_text,
+                citation=f"{authors[0] if authors else 'Unknown'} et al. ({year}). {title}. {journal}."
+            ))
+        return articles
+
 # --- 新規: BioRxivClient の定義 ---
 class BioRxivClient:
-    # 例として、bioRxiv API の URL を利用（実際の仕様に合わせて調整してください）
     BASE_URL = "https://api.biorxiv.org/details/biorxiv/2020-01-01/2023-12-31"
 
     async def search(self, query: str, max_results: int = 10) -> List[ArticleSummary]:
-        # URL例: https://api.biorxiv.org/details/biorxiv/2020-01-01/2023-12-31/<query>/<max_results>
         url = f"{self.BASE_URL}/{query}/{max_results}"
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, timeout=settings.TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
         articles = []
-        # bioRxiv API のレスポンス形式に応じて、collection キーの情報を抽出
         for item in data.get("collection", []):
             title = item.get("title", "No title")
-            # 複数著者がセミコロン区切りで文字列として返ることがあるため分割
             authors_str = item.get("authors", "")
             authors = [a.strip() for a in authors_str.split(";")] if authors_str else []
             journal = "bioRxiv"
@@ -394,7 +423,7 @@ async def search_articles(query: str, max_results: int = 10):
     results = [{"pmid": art.pmid, "title": art.title, "journal": art.journal, "year": art.year} for art in articles]
     return SearchResponse(query=query, count=count, results=results)
 
-# 新規: arXiv の検索エンドポイント
+# 新規エンドポイント: arXiv の検索
 @app.get("/search_arxiv", tags=["Search"])
 async def search_arxiv(query: str, max_results: int = 10):
     if not query or query.strip() == "":
@@ -404,7 +433,7 @@ async def search_arxiv(query: str, max_results: int = 10):
     results = [{"title": art.title, "authors": art.authors, "year": art.year, "abstract": art.abstract} for art in articles]
     return {"query": query, "count": len(results), "results": results}
 
-# 新規: bioRxiv の検索エンドポイント
+# 新規エンドポイント: bioRxiv の検索
 @app.get("/search_biorxiv", tags=["Search"])
 async def search_biorxiv(query: str, max_results: int = 10):
     if not query or query.strip() == "":
@@ -414,13 +443,34 @@ async def search_biorxiv(query: str, max_results: int = 10):
     results = [{"title": art.title, "authors": art.authors, "year": art.year, "abstract": art.abstract} for art in articles]
     return {"query": query, "count": len(results), "results": results}
 
+# --- 新規: /metrics エンドポイント ---
+@app.get("/metrics", tags=["Metrics"])
+def get_metrics():
+    uptime = datetime.datetime.now() - datetime.datetime.fromtimestamp(os.stat(__file__).st_ctime)
+    return {
+        "uptime": str(uptime),
+        "build_time": get_timestamp(),
+        "version": "2.0.0"
+    }
+
+# --- 新規: /recent_logs エンドポイント ---
+@app.get("/recent_logs", tags=["Logs"])
+def recent_logs(lines: int = 10):
+    log_file = os.path.join(settings.LOG_DIR, "pubmed_rag.log")
+    if not os.path.exists(log_file):
+        raise HTTPException(status_code=404, detail="Log file not found")
+    with open(log_file, "r", encoding="utf-8") as f:
+        content = f.readlines()
+    # 最新の行から lines 数だけ返す
+    return {"recent_logs": content[-lines:]}
+
 @app.get("/paper/{pmid}", response_model=PaperData, tags=["Paper"])
 async def get_paper(pmid: str):
     pubmed = PubMedClient(api_key=settings.NCBI_API_KEY)
     articles = await pubmed.fetch_details([pmid])
     if not articles:
         raise HTTPException(status_code=404, detail=f"No article found for PMID {pmid}")
-    # process_paper 関数は要約生成、チャンク化などを実施する補助関数です（定義済みの前提）
+    # process_paper 関数は要約生成、チャンク化などを実施する補助関数です（実装済みの前提）
     paper = process_paper(articles[0])
     return paper
 
