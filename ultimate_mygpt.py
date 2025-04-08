@@ -6,7 +6,7 @@ Ultimate MyGPT-Paper Analyzer - Ultimate Version (2.0)
 ・高度なテキストチャンク化、重複オーバーラップ処理
 ・Transformerによる要約生成（多段階要約対応）
 ・埋め込み生成（SciBERT/SPECTER/All-MiniLM選択可能）でFAISS検索連携（拡張可能）
-・FastAPIによるREST API提供 (/search, /paper/{id}, /export, /embed, /health, /version, /status, /log, /search_arxiv, /search_biorxiv, /metrics, /recent_logs)
+・FastAPIによるREST API提供 (/search, /paper/{id}, /export, /embed, /health, /version, /status, /log, /search_arxiv, /search_biorxiv, /metrics, /recent_logs, /search_all)
 ・非同期処理、バッチ処理、キャッシュ、リトライ戦略を実装
 ・pydanticによる厳格なスキーマ管理、ドキュメント自動生成
 ・GitHub管理、無料ホスティング＋CI/CD自動更新、MyGPTアクション連携を前提
@@ -356,7 +356,7 @@ class BioRxivClient:
 # --- FastAPI インスタンスの定義 ---
 app = FastAPI(
     title="Ultimate MyGPT-Paper Analyzer API",
-    description="PubMed/PMC, arXiv, bioRxiv 論文の検索、解析、要約、チャンク化、埋め込み生成を提供するAPI。MyGPTのRAG連携用学習データとして利用可能。",
+    description="PubMed/PMC, arXiv, bioRxiv 論文の検索、解析、要約、チャンク化、埋め込み生成を提供するAPI。MyGPTのRAG連携用学習データとして利用可能.",
     version="2.0.0"
 )
 
@@ -443,26 +443,36 @@ async def search_biorxiv(query: str, max_results: int = 10):
     results = [{"title": art.title, "authors": art.authors, "year": art.year, "abstract": art.abstract} for art in articles]
     return {"query": query, "count": len(results), "results": results}
 
-# --- 新規: /metrics エンドポイント ---
-@app.get("/metrics", tags=["Metrics"])
-def get_metrics():
-    uptime = datetime.datetime.now() - datetime.datetime.fromtimestamp(os.stat(__file__).st_ctime)
-    return {
-        "uptime": str(uptime),
-        "build_time": get_timestamp(),
-        "version": "2.0.0"
-    }
+# 新規エンドポイント: 統合検索 (PubMed, arXiv, bioRxiv)
+@app.get("/search_all", tags=["Search"])
+async def search_all(query: str, max_results: int = 10):
+    if not query or query.strip() == "":
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    
+    pubmed_client = PubMedClient(api_key=settings.NCBI_API_KEY)
+    arxiv_client = ArxivClient()
+    biorxiv_client = BioRxivClient()
+    
+    # 並列で各クライアントの検索を行う
+    pubmed_future = pubmed_client.search(query, retmax=max_results)
+    arxiv_future = arxiv_client.search(query, max_results)
+    biorxiv_future = biorxiv_client.search(query, max_results)
+    
+    pubmed_ids, pubmed_count = await pubmed_future
+    pubmed_articles = await pubmed_client.fetch_details(pubmed_ids)
+    arxiv_articles = await arxiv_future
+    biorxiv_articles = await biorxiv_future
 
-# --- 新規: /recent_logs エンドポイント ---
-@app.get("/recent_logs", tags=["Logs"])
-def recent_logs(lines: int = 10):
-    log_file = os.path.join(settings.LOG_DIR, "pubmed_rag.log")
-    if not os.path.exists(log_file):
-        raise HTTPException(status_code=404, detail="Log file not found")
-    with open(log_file, "r", encoding="utf-8") as f:
-        content = f.readlines()
-    # 最新の行から lines 数だけ返す
-    return {"recent_logs": content[-lines:]}
+    # 各結果をシンプルなリストへ変換
+    results = []
+    for art in pubmed_articles:
+        results.append({"source": "PubMed", "pmid": art.pmid, "title": art.title, "journal": art.journal, "year": art.year})
+    for art in arxiv_articles:
+        results.append({"source": "arXiv", "title": art.title, "authors": art.authors, "year": art.year})
+    for art in biorxiv_articles:
+        results.append({"source": "bioRxiv", "pmid": art.pmid, "title": art.title, "journal": art.journal, "year": art.year})
+    
+    return {"query": query, "count": len(results), "results": results}
 
 @app.get("/paper/{pmid}", response_model=PaperData, tags=["Paper"])
 async def get_paper(pmid: str):
@@ -470,7 +480,7 @@ async def get_paper(pmid: str):
     articles = await pubmed.fetch_details([pmid])
     if not articles:
         raise HTTPException(status_code=404, detail=f"No article found for PMID {pmid}")
-    # process_paper 関数は要約生成、チャンク化などを実施する補助関数です（実装済みの前提）
+    # process_paper 関数は要約生成、チャンク化などを実施する補助関数です（定義済みの前提）
     paper = process_paper(articles[0])
     return paper
 
@@ -514,6 +524,26 @@ async def update_database(background_tasks: BackgroundTasks):
         logger.info("Database update complete.")
     background_tasks.add_task(update_task)
     return {"message": "Update task scheduled."}
+
+# --- 新規: /metrics エンドポイント ---
+@app.get("/metrics", tags=["Metrics"])
+def get_metrics():
+    uptime = datetime.datetime.now() - datetime.datetime.fromtimestamp(os.stat(__file__).st_ctime)
+    return {
+        "uptime": str(uptime),
+        "build_time": get_timestamp(),
+        "version": "2.0.0"
+    }
+
+# --- 新規: /recent_logs エンドポイント ---
+@app.get("/recent_logs", tags=["Logs"])
+def recent_logs(lines: int = 10):
+    log_file = os.path.join(settings.LOG_DIR, "pubmed_rag.log")
+    if not os.path.exists(log_file):
+        raise HTTPException(status_code=404, detail="Log file not found")
+    with open(log_file, "r", encoding="utf-8") as f:
+        content = f.readlines()
+    return {"recent_logs": content[-lines:]}
 
 # --- アプリ起動 ---
 if __name__ == "__main__":
