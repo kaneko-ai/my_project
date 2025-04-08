@@ -12,3 +12,4 @@ pydantic
 pydantic-settings
 pytest
 PyJWT
+redis
