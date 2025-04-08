@@ -290,8 +290,7 @@ class PubMedClient:
             ))
         return articles
 
-# （注：export_articles、process_paper 等の補助関数は省略されている場合がありますが、
-#  必要に応じて追加してください。）
+# 注意: process_paper や export_articles などの補助関数は実装されている前提です。
 
 # --- FastAPI インスタンスの定義 ---
 app = FastAPI(
@@ -311,8 +310,12 @@ app.add_middleware(
 )
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# --- エンドポイントの定義 ---
+# --- ルートエンドポイントの定義 ---
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to Ultimate MyGPT-Paper Analyzer API"}
 
+# --- その他のエンドポイントの定義 ---
 @app.post("/log", tags=["Logging"])
 async def log_interaction(request: Request):
     data = await request.json()
@@ -365,7 +368,7 @@ async def get_paper(pmid: str):
     articles = await pubmed.fetch_details([pmid])
     if not articles:
         raise HTTPException(status_code=404, detail=f"No article found for PMID {pmid}")
-    # process_paper 関数は要約生成、チャンク化などを実施する補助関数です（定義は省略）
+    # process_paper 関数は要約生成、チャンク化などを実施する補助関数です（実装済みの前提）
     paper = process_paper(articles[0])
     return paper
 
