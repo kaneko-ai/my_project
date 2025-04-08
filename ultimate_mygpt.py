@@ -6,7 +6,7 @@ Ultimate MyGPT-Paper Analyzer - Ultimate Version (2.0)
 ・高度なテキストチャンク化、重複オーバーラップ処理
 ・Transformerによる要約生成（多段階要約対応）
 ・埋め込み生成（SciBERT/SPECTER/All-MiniLM選択可能）でFAISS検索連携（拡張可能）
-・FastAPIによるREST API提供 (/search, /paper/{id}, /export, /embed, /health, /version, /status, /log)
+・FastAPIによるREST API提供 (/search, /paper/{id}, /export, /embed, /health, /version, /status, /log, /search_arxiv)
 ・非同期処理、バッチ処理、キャッシュ、リトライ戦略を実装
 ・pydanticによる厳格なスキーマ管理、ドキュメント自動生成
 ・GitHub管理、無料ホスティング＋CI/CD自動更新、MyGPTアクション連携を前提
@@ -208,7 +208,7 @@ class SmartChunker:
                 final_chunks.append(chunk)
         return final_chunks
 
-# --- 外部API連携: PubMed, arXiv, bioRxiv など ---
+# --- 外部API連携: PubMed など ---
 class PubMedClient:
     BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
     def __init__(self, api_key: Optional[str] = settings.NCBI_API_KEY):
@@ -290,7 +290,39 @@ class PubMedClient:
             ))
         return articles
 
-# 注意: process_paper や export_articles の具体的実装は、現行システム内で定義済みと仮定します。
+# --- 新規: ArxivClient の定義 ---
+import xml.etree.ElementTree as ET  # 既にインポートされていなければ追加
+class ArxivClient:
+    BASE_URL = "http://export.arxiv.org/api/query"
+    
+    async def search(self, query: str, max_results: int = 10) -> List[ArticleSummary]:
+        # URL例: http://export.arxiv.org/api/query?search_query=all:がん&max_results=10
+        url = f"{self.BASE_URL}?search_query=all:{query}&max_results={max_results}"
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, timeout=settings.TIMEOUT)
+            resp.raise_for_status()
+            xml_content = resp.text
+        # XML をパース
+        ns = {'atom': 'http://www.w3.org/2005/Atom'}
+        root = ET.fromstring(xml_content)
+        articles = []
+        for entry in root.findall('atom:entry', ns):
+            title = entry.find('atom:title', ns).text.strip() if entry.find('atom:title', ns) is not None else "No title"
+            summary_text = entry.find('atom:summary', ns).text.strip() if entry.find('atom:summary', ns) is not None else ""
+            authors = [author.find('atom:name', ns).text.strip() for author in entry.findall('atom:author', ns)]
+            journal = "arXiv"
+            published = entry.find('atom:published', ns).text.strip() if entry.find('atom:published', ns) is not None else ""
+            year = int(published[:4]) if published and published[:4].isdigit() else None
+            articles.append(ArticleSummary(
+                pmid="",
+                title=title,
+                authors=authors,
+                journal=journal,
+                year=year,
+                abstract=summary_text,
+                citation=f"{authors[0] if authors else 'Unknown'} et al. ({year}). {title}. {journal}."
+            ))
+        return articles
 
 # --- FastAPI インスタンスの定義 ---
 app = FastAPI(
@@ -362,6 +394,16 @@ async def search_articles(query: str, max_results: int = 10):
     results = [{"pmid": art.pmid, "title": art.title, "journal": art.journal, "year": art.year} for art in articles]
     return SearchResponse(query=query, count=count, results=results)
 
+# 新規エンドポイント: arXiv の検索
+@app.get("/search_arxiv", tags=["Search"])
+async def search_arxiv(query: str, max_results: int = 10):
+    if not query or query.strip() == "":
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    arxiv_client = ArxivClient()
+    articles = await arxiv_client.search(query, max_results)
+    results = [{"title": art.title, "authors": art.authors, "year": art.year, "abstract": art.abstract} for art in articles]
+    return {"query": query, "count": len(results), "results": results}
+
 @app.get("/paper/{pmid}", response_model=PaperData, tags=["Paper"])
 async def get_paper(pmid: str):
     pubmed = PubMedClient(api_key=settings.NCBI_API_KEY)
@@ -413,6 +455,6 @@ async def update_database(background_tasks: BackgroundTasks):
     background_tasks.add_task(update_task)
     return {"message": "Update task scheduled."}
 
-# --- アプリ起動 ----
+# --- アプリ起動 ---
 if __name__ == "__main__":
     uvicorn.run("ultimate_mygpt:app", host="0.0.0.0", port=8000, reload=True)
