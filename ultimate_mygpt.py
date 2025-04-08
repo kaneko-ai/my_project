@@ -6,7 +6,8 @@ Ultimate MyGPT-Paper Analyzer - Ultimate Version (2.0)
 ・高度なテキストチャンク化、重複オーバーラップ処理
 ・Transformerによる要約生成（多段階要約対応）
 ・埋め込み生成（SciBERT/SPECTER/All-MiniLM選択可能）でFAISS検索連携（拡張可能）
-・FastAPIによるREST API提供 (/search, /paper/{id}, /export, /embed, /health, /version, /status, /log, /search_arxiv, /search_biorxiv, /metrics, /recent_logs, /search_all)
+・FastAPIによるREST API提供 (/search, /paper/{id}, /export, /embed, /health, /version, /status, /log,
+   /search_arxiv, /search_biorxiv, /metrics, /recent_logs, /search_all, /login, /secure_metrics, /cached_search, /search_logs)
 ・非同期処理、バッチ処理、キャッシュ、リトライ戦略を実装
 ・pydanticによる厳格なスキーマ管理、ドキュメント自動生成
 ・GitHub管理、無料ホスティング＋CI/CD自動更新、MyGPTアクション連携を前提
@@ -19,10 +20,17 @@ from typing import List, Dict, Any, Optional
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request, Depends
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
+
+# セキュリティ関連ライブラリ
+import jwt
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+# キャッシュ用ライブラリ（redis.asyncio）
+import redis.asyncio as redis
 
 # NLP / MLライブラリ
 import nltk, spacy, pysbd, torch
@@ -57,6 +65,12 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "default"
     NCBI_API_KEY: Optional[str] = None
 
+    # セキュリティ用設定
+    JWT_SECRET_KEY: str = "your_jwt_secret_key"  # 本番では安全なキーを設定
+    JWT_ALGORITHM: str = "HS256"
+    # Redis の接続設定
+    REDIS_URL: str = "redis://localhost:6379/0"
+
     class Config:
         env_file = ".env"
 
@@ -79,6 +93,16 @@ for pkg in ["punkt", "stopwords"]:
     except LookupError:
         nltk.download(pkg, quiet=True)
 
+# --- セキュリティ関連 ---
+security = HTTPBearer()
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        return payload  # payload内にユーザー情報などを含める
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=403, detail="Invalid or expired token")
+
 # --- ユーティリティ関数 ---
 def generate_uuid() -> str:
     return str(uuid.uuid4())
@@ -94,7 +118,7 @@ def truncate_text(text: str, max_length: int = 1000) -> str:
 
 # --- モデル・パイプライン管理 ---
 class ModelLoader:
-    """各種NLPモデルのロード・管理クラス。埋め込みは設定によりSciBERT, SPECTERなどに切替可能。"""
+    """各種NLPモデルのロード・管理クラス。"""
     def __init__(self):
         self.semantic_model: Optional[SentenceTransformer] = None
         self.summarizer: Optional[Any] = None
@@ -137,7 +161,7 @@ class ModelLoader:
 model_loader = ModelLoader()
 models_loaded = model_loader.load_all()
 
-# --- FAISSインデックス (拡張性のための基礎) ---
+# --- FAISSインデックス ---
 faiss_index = None
 def build_faiss_index(embeddings: List[np.ndarray]) -> Any:
     d = embeddings[0].shape[0]
@@ -198,7 +222,6 @@ class SmartChunker:
                 current_chunk = sentence
         if current_chunk:
             chunks.append(current_chunk.strip())
-        # オーバーラップ処理
         final_chunks = []
         for i, chunk in enumerate(chunks):
             if i > 0:
@@ -292,7 +315,7 @@ class PubMedClient:
         return articles
 
 # --- 新規: ArxivClient の定義 ---
-import xml.etree.ElementTree as ET  # 必要に応じて
+import xml.etree.ElementTree as ET  # 再度必要なら追加
 class ArxivClient:
     BASE_URL = "http://export.arxiv.org/api/query"
     
@@ -352,6 +375,81 @@ class BioRxivClient:
                 citation=f"{authors[0] if authors else 'Unknown'} et al. ({year}). {title}. {journal}."
             ))
         return articles
+
+# --- 新規: ユーザー認証 (JWT) ---
+# ログイン時にトークンを発行し、セキュアエンドポイントで利用する
+security = HTTPBearer()
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+        return payload
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=403, detail="Invalid or expired token")
+
+@app.post("/login", tags=["Authentication"])
+async def login(request: Request):
+    body = await request.json()
+    username = body.get("username")
+    password = body.get("password")
+    # シンプルな認証例: username == "testuser", password == "testpass" の場合のみ成功
+    if username == "testuser" and password == "testpass":
+        token_payload = {
+            "sub": username,
+            "iat": datetime.datetime.utcnow(),
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        }
+        token = jwt.encode(token_payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+        return {"access_token": token}
+    else:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+# --- 新規: セキュアなメトリクスエンドポイント ---
+@app.get("/secure_metrics", tags=["Metrics"])
+def secure_metrics(user: dict = Depends(verify_token)):
+    uptime = datetime.datetime.now() - datetime.datetime.fromtimestamp(os.stat(__file__).st_ctime)
+    return {
+        "uptime": str(uptime),
+        "build_time": get_timestamp(),
+        "version": "2.0.0",
+        "user": user
+    }
+
+# --- 新規: キャッシュ機構 (Redis) の導入 ---
+# Redis への接続（非同期版）
+redis_client = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+
+@app.get("/cached_search", tags=["Search"])
+async def cached_search(query: str, max_results: int = 10):
+    if not query or query.strip() == "":
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    
+    cache_key = f"search:{query}:{max_results}"
+    cached_result = await redis_client.get(cache_key)
+    if cached_result:
+        return json.loads(cached_result)
+    
+    # ここでは PubMed の検索結果を例として利用します
+    pubmed = PubMedClient(api_key=settings.NCBI_API_KEY)
+    ids, count = await pubmed.search(query, retmax=max_results)
+    articles = await pubmed.fetch_details(ids)
+    results = [{"pmid": art.pmid, "title": art.title, "journal": art.journal, "year": art.year} for art in articles]
+    response_data = {"query": query, "count": count, "results": results}
+    
+    # 結果をキャッシュに 5 分間保存
+    await redis_client.set(cache_key, json.dumps(response_data), ex=300)
+    return response_data
+
+# --- 新規: ログ検索エンドポイント ---
+@app.get("/search_logs", tags=["Logs"])
+def search_logs(keyword: str):
+    log_file = os.path.join(settings.LOG_DIR, "pubmed_rag.log")
+    if not os.path.exists(log_file):
+        raise HTTPException(status_code=404, detail="Log file not found")
+    with open(log_file, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    matched_lines = [line for line in lines if keyword.lower() in line.lower()]
+    return {"matched_logs": matched_lines}
 
 # --- FastAPI インスタンスの定義 ---
 app = FastAPI(
@@ -443,7 +541,7 @@ async def search_biorxiv(query: str, max_results: int = 10):
     results = [{"title": art.title, "authors": art.authors, "year": art.year, "abstract": art.abstract} for art in articles]
     return {"query": query, "count": len(results), "results": results}
 
-# 新規エンドポイント: 統合検索 (PubMed, arXiv, bioRxiv)
+# 新規エンドポイント: 統合検索（PubMed, arXiv, bioRxiv）
 @app.get("/search_all", tags=["Search"])
 async def search_all(query: str, max_results: int = 10):
     if not query or query.strip() == "":
@@ -453,7 +551,6 @@ async def search_all(query: str, max_results: int = 10):
     arxiv_client = ArxivClient()
     biorxiv_client = BioRxivClient()
     
-    # 並列で各クライアントの検索を行う
     pubmed_future = pubmed_client.search(query, retmax=max_results)
     arxiv_future = arxiv_client.search(query, max_results)
     biorxiv_future = biorxiv_client.search(query, max_results)
@@ -463,7 +560,6 @@ async def search_all(query: str, max_results: int = 10):
     arxiv_articles = await arxiv_future
     biorxiv_articles = await biorxiv_future
 
-    # 各結果をシンプルなリストへ変換
     results = []
     for art in pubmed_articles:
         results.append({"source": "PubMed", "pmid": art.pmid, "title": art.title, "journal": art.journal, "year": art.year})
@@ -480,7 +576,6 @@ async def get_paper(pmid: str):
     articles = await pubmed.fetch_details([pmid])
     if not articles:
         raise HTTPException(status_code=404, detail=f"No article found for PMID {pmid}")
-    # process_paper 関数は要約生成、チャンク化などを実施する補助関数です（定義済みの前提）
     paper = process_paper(articles[0])
     return paper
 
@@ -525,7 +620,7 @@ async def update_database(background_tasks: BackgroundTasks):
     background_tasks.add_task(update_task)
     return {"message": "Update task scheduled."}
 
-# --- 新規: /metrics エンドポイント ---
+# --- 新規エンドポイント: /metrics ---
 @app.get("/metrics", tags=["Metrics"])
 def get_metrics():
     uptime = datetime.datetime.now() - datetime.datetime.fromtimestamp(os.stat(__file__).st_ctime)
@@ -535,7 +630,7 @@ def get_metrics():
         "version": "2.0.0"
     }
 
-# --- 新規: /recent_logs エンドポイント ---
+# --- 新規エンドポイント: /recent_logs ---
 @app.get("/recent_logs", tags=["Logs"])
 def recent_logs(lines: int = 10):
     log_file = os.path.join(settings.LOG_DIR, "pubmed_rag.log")
@@ -545,6 +640,122 @@ def recent_logs(lines: int = 10):
         content = f.readlines()
     return {"recent_logs": content[-lines:]}
 
+# --- 新規エンドポイント: ユーザー認証 (JWT) /login ---
+@app.post("/login", tags=["Authentication"])
+async def login(request: Request):
+    body = await request.json()
+    username = body.get("username")
+    password = body.get("password")
+    # 簡易認証: ユーザー名 "testuser" とパスワード "testpass"
+    if username == "testuser" and password == "testpass":
+        token_payload = {
+            "sub": username,
+            "iat": datetime.datetime.utcnow(),
+            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+        }
+        token = jwt.encode(token_payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+        return {"access_token": token}
+    else:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+# --- 新規エンドポイント: セキュアなメトリクス /secure_metrics ---
+@app.get("/secure_metrics", tags=["Metrics"])
+def secure_metrics(user: dict = Depends(verify_token)):
+    uptime = datetime.datetime.now() - datetime.datetime.fromtimestamp(os.stat(__file__).st_ctime)
+    return {
+        "uptime": str(uptime),
+        "build_time": get_timestamp(),
+        "version": "2.0.0",
+        "user": user
+    }
+
+# --- 新規エンドポイント: キャッシュを用いた検索 /cached_search ---
+@app.get("/cached_search", tags=["Search"])
+async def cached_search(query: str, max_results: int = 10):
+    if not query or query.strip() == "":
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    
+    cache_key = f"search:{query}:{max_results}"
+    cached_result = await redis_client.get(cache_key)
+    if cached_result:
+        return json.loads(cached_result)
+    
+    pubmed = PubMedClient(api_key=settings.NCBI_API_KEY)
+    ids, count = await pubmed.search(query, retmax=max_results)
+    articles = await pubmed.fetch_details(ids)
+    results = [{"pmid": art.pmid, "title": art.title, "journal": art.journal, "year": art.year} for art in articles]
+    response_data = {"query": query, "count": count, "results": results}
+    await redis_client.set(cache_key, json.dumps(response_data), ex=300)
+    return response_data
+
+# --- 新規エンドポイント: ログ検索 /search_logs ---
+@app.get("/search_logs", tags=["Logs"])
+def search_logs(keyword: str):
+    log_file = os.path.join(settings.LOG_DIR, "pubmed_rag.log")
+    if not os.path.exists(log_file):
+        raise HTTPException(status_code=404, detail="Log file not found")
+    with open(log_file, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    matched_lines = [line for line in lines if keyword.lower() in line.lower()]
+    return {"matched_logs": matched_lines}
+
+# --- 既存エンドポイント: /paper/{pmid} ---
+@app.get("/paper/{pmid}", response_model=PaperData, tags=["Paper"])
+async def get_paper(pmid: str):
+    pubmed = PubMedClient(api_key=settings.NCBI_API_KEY)
+    articles = await pubmed.fetch_details([pmid])
+    if not articles:
+        raise HTTPException(status_code=404, detail=f"No article found for PMID {pmid}")
+    paper = process_paper(articles[0])
+    return paper
+
+# --- 既存エンドポイント: /export ---
+@app.get("/export", response_model=List[PaperData], tags=["Export"])
+async def export(query: str, max_results: int = 10):
+    articles = await export_articles(query, retmax=max_results)
+    return articles
+
+# --- 既存エンドポイント: /embed ---
+@app.get("/embed", tags=["Embedding"])
+async def get_embedding(pmid: Optional[str] = None, text: Optional[str] = None):
+    if pmid:
+        pubmed = PubMedClient(api_key=settings.NCBI_API_KEY)
+        articles = await pubmed.fetch_details([pmid])
+        if not articles:
+            raise HTTPException(status_code=404, detail=f"No article found for PMID {pmid}")
+        vec = model_loader.semantic_model.encode(articles[0].abstract or "")
+        return {"pmid": pmid, "embedding": vec.tolist()}
+    elif text:
+        vec = model_loader.semantic_model.encode(text)
+        return {"text": text, "embedding": vec.tolist()}
+    else:
+        raise HTTPException(status_code=400, detail="Provide either pmid or text for embedding.")
+
+@app.post("/update", tags=["Maintenance"])
+async def update_database(background_tasks: BackgroundTasks):
+    async def update_task():
+        topics = ["CD73", "adenosine", "cancer immunotherapy", "tumor microenvironment"]
+        all_ids = []
+        async with httpx.AsyncClient() as client:
+            for topic in topics:
+                try:
+                    pm_client = PubMedClient(api_key=settings.NCBI_API_KEY)
+                    ids, _ = await pm_client.search(topic)
+                    all_ids.extend(["pubmed:" + pid for pid in ids])
+                except Exception as e:
+                    logger.error(f"Error updating topic {topic}: {e}")
+        unique_ids = list(dict.fromkeys(all_ids))
+        update_file = os.path.join(settings.META_DIR, "processed_ids.json")
+        with open(update_file, "w", encoding="utf-8") as f:
+            json.dump(unique_ids, f, ensure_ascii=False, indent=2)
+        logger.info("Database update complete.")
+    background_tasks.add_task(update_task)
+    return {"message": "Update task scheduled."}
+
 # --- アプリ起動 ---
 if __name__ == "__main__":
+    # Redis クライアントの初期化
+    import redis.asyncio as redis
+    redis_client = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+    
     uvicorn.run("ultimate_mygpt:app", host="0.0.0.0", port=8000, reload=True)
