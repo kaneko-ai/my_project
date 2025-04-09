@@ -1,4 +1,4 @@
-name: Run Tests
+name: Test, Lint, and Coverage
 
 on:
   push:
@@ -24,7 +24,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
+          pip install pytest pytest-cov flake8
 
-      - name: Run tests with pytest
-        run: pytest
+      - name: Run Linter (flake8)
+        run: |
+          echo "Running flake8 for linting..."
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+
+      - name: Run Tests with Coverage
+        run: |
+          echo "Running pytest with coverage..."
+          pytest --cov=. --cov-report=term-missing
+
+      - name: Upload coverage report to GitHub summary
+        if: success()
+        run: |
+          echo "## 🧪 Coverage Report" >> $GITHUB_STEP_SUMMARY
+          pytest --cov=. --cov-report=term-missing | tee /tmp/coverage.txt
+          tail -n 20 /tmp/coverage.txt >> $GITHUB_STEP_SUMMARY
