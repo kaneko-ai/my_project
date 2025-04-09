@@ -19,5 +19,5 @@ COPY . .
 ENV PORT=8000
 EXPOSE 8000
 
-CMD ["python", "my_project/gradio_app.py"]
+CMD ["python", "gradio_app.py"]
 
