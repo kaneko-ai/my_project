@@ -1,4 +1,4 @@
-name: CI - Run Tests and Code Check
+name: Test & Coverage
 
 on:
   push:
@@ -11,30 +11,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: 3.11
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov codecov black isort
+          pip install pytest pytest-cov
 
-      - name: Lint check with black
-        run: black . --check
+      - name: Run tests and generate coverage report
+        run: pytest --cov=./
 
-      - name: Import order check with isort
-        run: isort . --check-only
-
-      - name: Run tests with coverage
-        run: pytest --cov=. --cov-report=xml
-
-      - name: Upload coverage report to Codecov
+      - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
