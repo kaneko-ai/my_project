@@ -13,3 +13,5 @@ pydantic-settings
 pytest
 PyJWT
 redis
+black
+isort
