@@ -1,3 +1,4 @@
+# main.py
 from dotenv import load_dotenv
 import os
 
@@ -29,7 +30,7 @@ def root():
         "api_key_loaded": NCBI_API_KEY is not None
     }
 
-# 開発用の実行ブロック
+# 開発用の実行ブロック（ローカル起動用）
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
