@@ -1,34 +1,14 @@
-name: CI - Run Tests
+name: Render Auto Deploy
 
-# ここが最上部のトリガー設定
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  schedule:
-    - cron: '0 * * * *'   # 毎時0分に実行（UTC）。必要に応じて時刻を調整してください。
+    branches:
+      - main
 
 jobs:
-  test:
-    runs-on: windows-latest  # Windows環境でテストを実行（必要に応じて ubuntu-latest などに変更も可能）
-    defaults:
-      run:
-        working-directory: .
+  deploy:
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.11
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
-
-      - name: Run tests with pytest
-        run: python -m pytest
+      - name: Call Render Deploy Hook
+        run: curl -X POST ${{ https://api.render.com/deploy/srv-cvr4ldfgi27c738l2pj0?key=LXbM54aOWUc }}
