@@ -3,30 +3,42 @@
 import streamlit as st
 import pandas as pd
 from api_clients.pubmed_client import fetch_pubmed_articles
+from api_clients.arxiv_biorxiv_client import fetch_arxiv_articles, fetch_biorxiv_articles
 from nlp.summary_model import summarize_text
 from utils.log_manager import save_log
 from fpdf import FPDF
 import io
 
-st.set_page_config(page_title="PubMed 論文要約ツール", layout="centered")
+st.set_page_config(page_title="論文要約ツール", layout="centered")
+st.title("📄 PubMed / arXiv / bioRxiv 論文要約 & 保存ツール")
+st.markdown("キーワードから論文を検索し、要約結果をCSV/PDFで保存します。")
 
-st.title("📄 PubMed 論文要約 & 保存ツール")
-st.markdown("キーワードからPubMed論文を検索し、要約結果をCSV/PDFで保存します。")
-
+# 🔽 検索対象選択（PubMed / arXiv / bioRxiv）
+source = st.selectbox("📚 検索対象を選択:", ["PubMed", "arXiv", "bioRxiv"])
 query = st.text_input("🔍 検索キーワードを入力")
 
 if st.button("検索して要約！"):
     if not query:
         st.warning("検索キーワードを入力してください。")
     else:
-        with st.spinner("論文を取得して要約中..."):
-            articles = fetch_pubmed_articles(query)
+        with st.spinner(f"{source} から論文を取得して要約中..."):
+            # 🔄 検索対象に応じた関数呼び出し
+            if source == "PubMed":
+                articles = fetch_pubmed_articles(query)
+            elif source == "arXiv":
+                articles = fetch_arxiv_articles(query)
+            elif source == "bioRxiv":
+                articles = fetch_biorxiv_articles(query)
+            else:
+                st.error("無効な検索対象です。")
+                articles = []
 
             if not articles:
                 st.error("論文が見つかりませんでした。")
             else:
                 results = []
                 summaries_text = ""
+
                 for article in articles:
                     summary = summarize_text(article.abstract)
                     results.append({
@@ -34,18 +46,18 @@ if st.button("検索して要約！"):
                         "要約": summary
                     })
                     summaries_text += f"📝【{article.title}】\n{summary}\n\n"
-                    save_log(f"検索: {query} | タイトル: {article.title} | 要約: {summary}")
+                    save_log(f"検索: {query} | 対象: {source} | タイトル: {article.title} | 要約: {summary}")
 
                 df = pd.DataFrame(results)
 
                 st.success(f"{len(results)} 件の要約を取得しました！")
                 st.text_area("📑 要約結果", summaries_text, height=300)
 
-                # CSV出力
+                # CSVダウンロード
                 csv = df.to_csv(index=False).encode("utf-8")
                 st.download_button("⬇️ CSVでダウンロード", csv, "summary.csv", "text/csv")
 
-                # PDF出力
+                # PDFダウンロード
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", size=12)
