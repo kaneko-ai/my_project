@@ -1,27 +1,36 @@
-# api_clients/pubmed_client.py
-import httpx
-from typing import List, Tuple
+# app/api_clients/pubmed_client.py
 
-class PubMedClient:
-    BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
-    def __init__(self, api_key: str = None):
-        self.api_key = api_key
+from typing import List
+from Bio import Entrez
+from pydantic import BaseModel
 
-    async def search(self, query: str, retmax: int = 10) -> Tuple[List[str], int]:
-        params = {
-            "db": "pubmed",
-            "term": query,
-            "retmode": "json",
-            "retmax": retmax
-        }
-        if self.api_key:
-            params["api_key"] = self.api_key
-        url = f"{self.BASE_URL}/esearch.fcgi"
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(url, params=params)
-            resp.raise_for_status()
-            data = resp.json()
-        result = data.get("esearchresult", {})
-        count = int(result.get("count", 0))
-        id_list = result.get("idlist", [])
-        return id_list, count
+# PubMed API使用時にメールアドレスを指定（Entrez規定）
+Entrez.email = "kaneko.yu.r3@dc.tohoku.ac.jp"  # ←後で .env に逃がしてOK
+
+class PubMedArticle(BaseModel):
+    title: str
+    abstract: str
+
+def fetch_pubmed_articles(query: str, max_results: int = 5) -> List[PubMedArticle]:
+    """PubMed APIから論文を検索して要約情報を取得"""
+    handle = Entrez.esearch(db="pubmed", term=query, retmax=max_results)
+    record = Entrez.read(handle)
+    ids = record["IdList"]
+
+    articles: List[PubMedArticle] = []
+
+    if not ids:
+        return articles
+
+    fetch_handle = Entrez.efetch(db="pubmed", id=",".join(ids), rettype="abstract", retmode="xml")
+    fetch_records = Entrez.read(fetch_handle)
+
+    for article in fetch_records["PubmedArticle"]:
+        try:
+            title = article["MedlineCitation"]["Article"]["ArticleTitle"]
+            abstract = article["MedlineCitation"]["Article"]["Abstract"]["AbstractText"][0]
+            articles.append(PubMedArticle(title=title, abstract=str(abstract)))
+        except KeyError:
+            continue  # abstractがない論文はスキップ
+
+    return articles
