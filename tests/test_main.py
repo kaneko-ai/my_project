@@ -1,10 +1,10 @@
 import pytest
-from httpx import AsyncClient
-from main import app  # ← 修正ポイント！
+from fastapi.testclient import TestClient
+from main import app  # main.py の app をインポート
 
-@pytest.mark.asyncio
-async def test_root():
-    async with AsyncClient(app=app, base_url="http://test") as ac:
-        response = await ac.get("/")
+client = TestClient(app)
+
+def test_root():
+    response = client.get("/")
     assert response.status_code == 200
-    assert response.json() == {"message": "ようこそ！MyGPTアナライザーへ"}
+    assert response.json()["message"] == "ようこそ！MyGPTアナライザーへ"
