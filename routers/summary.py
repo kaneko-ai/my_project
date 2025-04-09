@@ -1,24 +1,36 @@
-# routers/summary.py
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query
+from typing import List
+from models.article import ArticleSummary
+from utils.summarizer import summarizer
 from api_clients.pubmed_client import fetch_pubmed_articles
-from nlp.summary_model import summarize_text
+from utils.log_manager import save_log  # ← 追加！
 
 router = APIRouter()
 
-class QueryRequest(BaseModel):
-    query: str
+@router.get("/summary", response_model=List[ArticleSummary])
+def summarize_articles(
+    query: str = Query(..., description="検索キーワード"),
+    max_results: int = 5
+):
+    articles = fetch_pubmed_articles(query, max_results)
+    if not articles:
+        raise HTTPException(status_code=404, detail="論文が見つかりませんでした")
 
-@router.post("/summarize_pubmed")
-def summarize_pubmed_query(request: QueryRequest):
-    # PubMedから最初の論文の抄録を取得
-    abstracts = search_pubmed_and_fetch_abstracts(request.query, max_results=1)
-    if not abstracts:
-        return {"error": "該当論文が見つかりませんでした"}
+    summaries = []
+    for article in articles:
+        summary_text = summarizer(article.abstract)
+        summary = ArticleSummary(
+            title=article.title,
+            abstract=article.abstract,
+            authors=[],
+            journal="PubMed",
+            year=None,
+            citation=None
+        )
+        summary.abstract = summary_text
+        summaries.append(summary)
 
-    # 要約
-    summary = summarize_text(abstracts[0])
-    return {
-        "original": abstracts[0],
-        "summary": summary
-    }
+        # ✅ ログに保存（ファイル＆メモリ）
+        save_log(f"[要約] {article.title} → {summary_text}")
+
+    return summaries
