@@ -15,3 +15,8 @@ PyJWT
 redis
 black
 isort
+biopython
+python-dotenv
+pytest-asyncio
+mypy
+types-requests
