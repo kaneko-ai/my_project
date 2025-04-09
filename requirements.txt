@@ -21,3 +21,4 @@ pytest-asyncio
 mypy
 types-requests
 gradio
+pandas
