@@ -1,7 +1,7 @@
 # routers/summary.py
 from fastapi import APIRouter
 from pydantic import BaseModel
-from api_clients.pubmed_client import search_pubmed_and_fetch_abstracts
+from api_clients.pubmed_client import fetch_pubmed_articles
 from nlp.summary_model import summarize_text
 
 router = APIRouter()
