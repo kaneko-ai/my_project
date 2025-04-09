@@ -1,4 +1,4 @@
-name: Render Auto Deploy
+name: deploy
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Call Render Deploy Hook
-        run: curl -X POST ${{ https://api.render.com/deploy/srv-cvr4ldfgi27c738l2pj0?key=LXbM54aOWUc }}
+      - name: HTTP request to Render
+        run: |
+          curl -X POST "https://api.render.com/deploy/srv-cvr4ldfgi27c738l2pj0?key=LXbM54aOWUc"
