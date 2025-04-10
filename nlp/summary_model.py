@@ -1,25 +1,28 @@
-# nlp/summary_model.py
+# summary_model.py
 
-from transformers import pipeline
+from transformers import PegasusTokenizer, PegasusForConditionalGeneration
 
-# モデルキャッシュ
-_summarizers = {}
+# ✅ モデルとトークナイザーの初期化
+model_name = "google/pegasus-xsum"
+tokenizer = PegasusTokenizer.from_pretrained(model_name)
+model = PegasusForConditionalGeneration.from_pretrained(model_name)
 
-def summarize_text(text: str, model: str = "default") -> str:
-    model_map = {
-        "default": "sshleifer/distilbart-cnn-12-6",
-        "bart": "facebook/bart-large-cnn",
-        "pegasus": "google/pegasus-xsum"
-    }
+def summarize_with_pegasus(text: str, max_length=128, min_length=32) -> str:
+    """
+    Pegasusモデルを使用してテキストを要約する関数
+    """
+    # 入力をトークナイズ
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, padding="longest", max_length=1024)
 
-    if model not in model_map:
-        model = "default"
+    # 要約生成
+    summary_ids = model.generate(
+        inputs["input_ids"],
+        max_length=max_length,
+        min_length=min_length,
+        num_beams=4,
+        length_penalty=2.0,
+        early_stopping=True,
+    )
 
-    model_name = model_map[model]
-
-    if model_name not in _summarizers:
-        _summarizers[model_name] = pipeline("summarization", model=model_name)
-
-    summarizer = _summarizers[model_name]
-    result = summarizer(text, max_length=150, min_length=40, do_sample=False)
-    return result[0]["summary_text"]
+    # 要約のデコード
+    return tokenizer.decode(summary_ids[0], skip_special_tokens=True)
