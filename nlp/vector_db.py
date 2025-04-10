@@ -1,20 +1,13 @@
-# nlp/vector_db.py
+# nlp/vector_db.py（類似度スコア付きで返す）
 
 import chromadb
 from chromadb.config import Settings
-from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
-
 from nlp.embedding_model import embed_text
 
 client = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet", persist_directory="./chroma_store"))
-
-# コレクション（論文データベース）
 collection = client.get_or_create_collection(name="articles")
 
 def add_document(doc_id: str, content: str, metadata: dict):
-    """
-    要約をChromaに追加
-    """
     embedding = embed_text(content)
     collection.add(
         documents=[content],
@@ -24,9 +17,15 @@ def add_document(doc_id: str, content: str, metadata: dict):
     )
 
 def search_similar(query: str, top_k: int = 5):
-    """
-    類似文書を検索
-    """
     query_vec = embed_text(query)
     results = collection.query(query_embeddings=[query_vec], n_results=top_k)
-    return results
+    
+    hits = []
+    for doc, meta, score in zip(results['documents'][0], results['metadatas'][0], results['distances'][0]):
+        hits.append({
+            "title": meta.get("title", "No Title"),
+            "content": doc,
+            "score": round(1 - score, 4),  # 類似度は距離の逆（1に近いほど類似）
+            "metadata": meta
+        })
+    return hits
