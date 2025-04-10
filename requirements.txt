@@ -24,3 +24,4 @@ gradio
 pandas
 fpdf
 streamlit
+beautifulsoup4
