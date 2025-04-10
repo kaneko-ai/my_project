@@ -2,7 +2,6 @@ fastapi
 uvicorn
 httpx
 nltk
-spacy
 pysbd
 torch
 transformers
