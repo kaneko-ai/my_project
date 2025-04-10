@@ -1,11 +1,11 @@
 import gradio as gr
 import csv
 from datetime import datetime
-from routers.summary import summarize_articles_from_pubmed_query
+from routers.summary import summarize_articles  # ✅ 正しくインポート
 
 def summarize_and_prepare_files(query: str):
     try:
-        results = summarize_articles_from_pubmed_query(query)
+        results = summarize_articles(query)  # ✅ ここを修正！
 
         # テキスト整形（Gradio表示用）
         summary_texts = [
@@ -46,6 +46,7 @@ iface = gr.Interface(
     title="PubMed論文要約ツール (MyGPT)",
     description="キーワードを入力すると、PubMedから論文を取得し要約します。保存もできます。",
 )
+
 
 if __name__ == "__main__":
     import os
