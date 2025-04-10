@@ -29,3 +29,4 @@ chromadb>=0.4.14
 sentence-transformers>=2.2.2
 duckdb
 faiss-cpu
+matplotlib
