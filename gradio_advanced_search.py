@@ -1,23 +1,39 @@
 # gradio_advanced_search.py
 
 import gradio as gr
-from nlp.vector_router import search_vector
 import matplotlib.pyplot as plt
+from nlp.vector_router import search_vector
 
-# ノイズ除去のしきい値（例: 類似度0.6未満をカット）
+# 💡 疾患カテゴリ分類ルール（簡易ルールベース）
+CATEGORY_KEYWORDS = {
+    "がん系": ["cancer", "tumor", "oncology"],
+    "神経系": ["brain", "neuro", "alzheim", "parkinson"],
+    "代謝系": ["diabetes", "insulin", "glucose", "metabolism"],
+    "循環器系": ["heart", "cardio", "vascular", "stroke"],
+}
+
+# 🤖 簡易リライト関数（GPT風整形）
+def rewrite_summary(summary: str):
+    return f"💬 要約：この研究では、{summary[:60]}... と報告されています。"
+
+# 🧠 カテゴリ分類（B3）
+def classify_category(text: str):
+    for category, keywords in CATEGORY_KEYWORDS.items():
+        if any(k in text.lower() for k in keywords):
+            return category
+    return "その他"
+
+# 🧠 検索関数（ベクトル or キーワード）
 SIMILARITY_THRESHOLD = 0.6
 
-# ダミーのキーワード検索（ベクトル検索とUI合わせる用）
 def keyword_search(query):
-    # TODO: 本格導入時は全文検索 or Elastic導入
     return [{
-        "title": "Keyword Match Dummy Result",
-        "content": "This is a keyword match example.",
-        "score": 0.99,
+        "title": "Keyword Match Dummy",
+        "content": "This is a mock keyword result.",
+        "score": 0.98,
         "metadata": {}
     }]
 
-# メイン検索関数（複合検索）
 def run_query(query, method, backend):
     if not query.strip():
         return "⚠️ 検索ワードを入力してください", None
@@ -29,19 +45,21 @@ def run_query(query, method, backend):
     else:
         results = []
 
-    # ノイズ除去（A6）
+    # フィルタ処理（A6）
     filtered = [r for r in results if r["score"] >= SIMILARITY_THRESHOLD]
     if not filtered:
-        return "🔍 有効な結果がありませんでした（類似度しきい値で除外された可能性あり）", None
+        return "🔍 有効な結果がありませんでした（スコアが低い可能性）", None
 
-    # 結果テキスト整形
-    text_output = "🧠 検索結果（類似スコア ≥ {:.1f}）:\n".format(SIMILARITY_THRESHOLD)
+    # テキスト整形：要約＋カテゴリ＋リライト（B2, B3）
+    text_output = f"🧠 検索結果（スコア ≥ {SIMILARITY_THRESHOLD:.1f}）:\n"
     for i, r in enumerate(filtered, 1):
-        text_output += f"\n{i}. 『{r['title']}』\n"
+        tag = classify_category(r['content'])
+        rewritten = rewrite_summary(r['content'])
+        text_output += f"\n{i}. 『{r['title']}』 [{tag}]\n"
         text_output += f"   📊 類似スコア: {r['score']}\n"
-        text_output += f"   📄 要約: {r['content'][:150]}...\n"
+        text_output += f"   {rewritten}\n"
 
-    # スコアグラフ（A3）
+    # グラフ（A3）
     fig, ax = plt.subplots()
     titles = [r["title"][:30] for r in filtered]
     scores = [r["score"] for r in filtered]
@@ -53,26 +71,24 @@ def run_query(query, method, backend):
 
     return text_output, fig
 
-# Gradio UI構築
-with gr.Blocks(title="MyGPT検索UI（強化版）") as demo:
-    gr.Markdown("# 🔍 類似論文検索（ベクトル＋キーワード＋スコアグラフ）")
+# Gradio UI
+with gr.Blocks(title="MyGPT拡張検索UI") as demo:
+    gr.Markdown("# 🔍 論文検索：ベクトル＋キーワード＋リライト＋分類")
 
     with gr.Row():
-        query_input = gr.Textbox(label="検索ワード", placeholder="例：免疫療法による肺がん治療")
-        method_choice = gr.Radio(["ベクトル検索", "キーワード検索"], value="ベクトル検索", label="検索手法")
-        backend_choice = gr.Dropdown(choices=["chroma", "faiss"], value="chroma", label="ベクトルDB")
+        query_input = gr.Textbox(label="検索ワード", placeholder="例：免疫療法 肺がん")
+        method_choice = gr.Radio(["ベクトル検索", "キーワード検索"], value="ベクトル検索", label="検索方式")
+        backend_choice = gr.Dropdown(["chroma", "faiss"], value="chroma", label="ベクトルDB")
 
-    search_button = gr.Button("検索する")
+    run_btn = gr.Button("検索する")
+    result_text = gr.Textbox(label="検索結果", lines=14)
+    score_graph = gr.Plot(label="類似スコア可視化")
 
-    result_box = gr.Textbox(label="検索結果", lines=12)
-    graph_plot = gr.Plot(label="類似度グラフ")
-
-    search_button.click(
+    run_btn.click(
         fn=run_query,
         inputs=[query_input, method_choice, backend_choice],
-        outputs=[result_box, graph_plot]
+        outputs=[result_text, score_graph]
     )
 
-# 実行
 if __name__ == "__main__":
     demo.launch()
