@@ -25,3 +25,6 @@ pandas
 fpdf
 streamlit
 beautifulsoup4
+chromadb>=0.4.14
+sentence-transformers>=2.2.2
+duckdb
