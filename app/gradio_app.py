@@ -32,12 +32,23 @@ def search_similar(query, db, top_k=3):
 # ✅ Gradioインターフェース
 def process_input(input_text, model_choice, task):
     if task == "要約":
-        summary = summarizers[model_choice](input_text, max_length=150, min_length=30, do_sample=False)[0]["summary_text"]
+        # Flan-T5には明示的なprefixが必要
+        if model_choice == "Flan-T5":
+            input_text = "summarize: " + input_text
+
+        summary = summarizers[model_choice](
+            input_text,
+            max_length=300,
+            min_length=50,
+            do_sample=False
+        )[0]["summary_text"]
         return summary
+
     elif task == "類似要約検索":
         db = load_summary_db()
         results = search_similar(input_text, db)
         return "\n\n".join([f"スコア:{s:.2f}\n{summ}" for s, summ in results])
+
     else:
         return "未実装のタスクです"
 
