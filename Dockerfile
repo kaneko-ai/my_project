@@ -1,23 +1,26 @@
-FROM python:3.11-slim
+# ✅ 軽量ベース + キャッシュ効率化 + 起動固定
+FROM python:3.10-slim
 
+# 環境変数でUTF-8とバッファリング設定
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    TZ=Asia/Tokyo \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+# 作業ディレクトリ
 WORKDIR /app
 
-# 1) OSレベルで必要なものを入れる（必要に応じて）
-RUN apt-get update && apt-get install -y \
-    build-essential
-
-# 2) pip, wheel 等をまずアップグレード/インストール
-RUN pip install --upgrade pip setuptools wheel
-
-# 3) requirements.txt を使ってライブラリインストール
+# 必要パッケージだけインストール（余計なaptは排除）
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# 4) ソースコードをコピー
+# アプリコード一式コピー
 COPY . .
 
-ENV PORT=8000
-EXPOSE 8000
+# ポート7860を明示（Gradio UI用）
+EXPOSE 7860
 
-CMD ["python", "gradio_app.py"]
-
+# Gradioアプリ起動（必ず0.0.0.0指定）
+CMD ["python", "app/gradio_app.py"]
