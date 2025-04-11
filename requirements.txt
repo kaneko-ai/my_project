@@ -30,3 +30,5 @@ sentence-transformers>=2.2.2
 duckdb
 faiss-cpu
 matplotlib
+scikit-learn
+huggingface-hub
