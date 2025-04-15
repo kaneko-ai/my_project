@@ -1,0 +1,18 @@
+[flake8]
+# 最大行長
+max-line-length = 88
+
+# チェックから除外するディレクトリ
+exclude =
+    .git,
+    __pycache__,
+    venv,
+    .venv,
+    build,
+    dist,
+    .mypy_cache
+
+# エラーコードの無視（必要に応じて追加可能）
+ignore =
+    E203,  # whitespace before ':'
+    W503   # line break before binary operator

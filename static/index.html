@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>MyGPT Paper Analyzer Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    button { margin-right: 10px; padding: 10px; }
+    pre { background-color: #f4f4f4; padding: 10px; border: 1px solid #ddd; }
+    input, textarea { width: 100%; margin-bottom: 10px; padding: 10px; }
+  </style>
+</head>
+<body>
+  <h1>MyGPT Paper Analyzer Dashboard</h1>
+
+  <!-- 既存のボタン（Health, Version） -->
+  <button id="healthBtn">Health Check</button>
+  <button id="versionBtn">Version Info</button>
+  
+  <!-- 新規追加：要約取得フォーム -->
+  <h2>要約取得</h2>
+  <textarea id="summaryInput" placeholder="要約対象のテキストを入力してください" rows="4"></textarea>
+  <button id="summaryBtn">要約を取得</button>
+
+  <!-- 結果表示用エリア -->
+  <div id="output">
+    <pre id="result"></pre>
+  </div>
+
+  <script>
+    // Health エンドポイントを呼び出す
+    document.getElementById("healthBtn").addEventListener("click", async () => {
+      try {
+        const response = await fetch("/health");
+        const data = await response.json();
+        document.getElementById("result").innerText = JSON.stringify(data, null, 2);
+      } catch (err) {
+        document.getElementById("result").innerText = "Error: " + err;
+      }
+    });
+
+    // Version エンドポイントを呼び出す
+    document.getElementById("versionBtn").addEventListener("click", async () => {
+      try {
+        const response = await fetch("/version");
+        const data = await response.json();
+        document.getElementById("result").innerText = JSON.stringify(data, null, 2);
+      } catch (err) {
+        document.getElementById("result").innerText = "Error: " + err;
+      }
+    });
+
+    // Summary エンドポイントを呼び出す
+    document.getElementById("summaryBtn").addEventListener("click", async () => {
+      try {
+        const text = document.getElementById("summaryInput").value;
+        if (!text) {
+          document.getElementById("result").innerText = "テキストを入力してください。";
+          return;
+        }
+        // 要約取得のリクエスト
+        const response = await fetch("/summary?text=" + encodeURIComponent(text));
+        const data = await response.json();
+        document.getElementById("result").innerText = JSON.stringify(data, null, 2);
+        
+        // ここでログ送信用の処理を追加（サンプル例）
+        await fetch("/log", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            action: "summary",
+            input: text,
+            output: data,
+            timestamp: new Date().toISOString()
+          })
+        });
+      } catch (err) {
+        document.getElementById("result").innerText = "Error: " + err;
+      }
+    });
+  </script>
+</body>
+</html>

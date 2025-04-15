@@ -1,0 +1,3 @@
+version,date,train_data_count,note
+original,2024-04-01,500,初期モデル
+retrained,2025-04-14,642,誤分類補完学習版

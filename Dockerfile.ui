@@ -1,0 +1,13 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY . .
+
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt && \
+    python -m spacy download en_core_web_sm
+
+EXPOSE 7860
+
+CMD ["python", "app/gradio_arxiv_ui.py"]

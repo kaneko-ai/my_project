@@ -1,0 +1,26 @@
+[
+  {
+    "doi": "10.1234/abc123",
+    "title": "Example Paper Title",
+    "journal": "Nature",
+    "publication_date": "2023-01-01",
+    "authors": ["Alice", "Bob"],
+    "abstract": "This is a test abstract about research in AI and medicine.",
+    "citation_count": 120,
+    "concepts": ["Artificial Intelligence", "Biomedicine"],
+    "authorships": [
+      {
+        "institutions": [
+          {"country_code": "US"},
+          {"country_code": "GB"}
+        ]
+      }
+    ],
+    "journal_quality": 9.5,
+    "citation": 12.0,
+    "altmetric": 20.0,
+    "reproducibility": 5.0,
+    "structural": 4.0,
+    "total_score": 80.0
+  }
+]

@@ -1,0 +1,6 @@
+title,abstract,field
+A GPT model for QA,We use GPT on QA datasets,nlp
+Cancer detection in CT scans,Using CNNs for cancer prediction,biomed
+Transformer language models,We explore BERT's behavior,nlp
+Hospital readmission risk,Logistic regression on patient data,biomed
+Quantum mechanics paper,A study of wave-particle duality,physics

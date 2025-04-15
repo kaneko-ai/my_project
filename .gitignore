@@ -1,0 +1,15 @@
+# 仮想環境のフォルダは追跡しない
+venv/
+
+# Python が生成するキャッシュファイル
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS 関連のファイル
+.DS_Store
+Thumbs.db
+
+# 環境変数ファイル
+.env
