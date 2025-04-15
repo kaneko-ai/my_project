@@ -34,3 +34,4 @@ def fetch_pubmed_articles(query: str, max_results: int = 5) -> List[PubMedArticl
             continue  # abstractがない論文はスキップ
 
     return articles
+# dummy

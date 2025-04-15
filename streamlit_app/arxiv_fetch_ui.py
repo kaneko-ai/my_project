@@ -15,3 +15,4 @@ if st.button("📥 論文を取得"):
             st.markdown(f"{i}. [{paper['title']}]({paper['url']})")
     except Exception as e:
         st.error(f"取得に失敗しました: {e}")
+# dummy
