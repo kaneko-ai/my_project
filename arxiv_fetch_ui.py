@@ -1,6 +1,13 @@
 import streamlit as st
 
-st.set_page_config(page_title="テスト", page_icon="✅")
-st.title("✅ Streamlit 起動テスト")
+print("✅ Streamlit 起動しました！")  # ターミナルに出るはず
+st.title("📄 arXiv論文取得テスト")
 
-st.write("この画面が表示されれば、UIは正常に描画されています！")
+try:
+    import sys
+    import os
+    import requests
+    import xml.etree.ElementTree as ET
+    print("✅ すべてのライブラリがインポートされました！")
+except Exception as e:
+    st.error(f"モジュール読み込み失敗: {e}")
